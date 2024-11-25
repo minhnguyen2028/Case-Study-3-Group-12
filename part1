@@ -1,0 +1,159 @@
+%% Case Study 3: Classifying Handwritten Digits
+%% Part 1: Working with MNIST Data 
+% *ESE 105*
+% 
+% *Name: Minh Duc Nguyen, Hussain Albotabeekh, Shaaf Afzal, Fataiya Salifu*
+%
+
+clear;
+close all;
+load mnist-testing.mat;
+load mnist-training.mat;
+
+
+%% Step 1: Loading + Exploring MNIST Data (Sample Images)
+
+%%%
+% CODE: *************************************************************
+
+% • Take a few minutes to observe similarities and differences in shape, intensity, orientation, location, etc.
+% in the different samples—both within a single digit ‘class’ as well as across different classes.
+
+% For replicability:
+rng(28);
+
+% Get random example images from the training set and plot them
+exampleImgs = cell(90, 1);  % Cell array to store selected example images
+in = 1;  % For array insertion purposes
+for d = 0:9
+    randInd = find(trainLabels == d); 
+    randInd = randInd(randperm(length(randInd)));
+    figure;
+    graph = tiledlayout(3, 3);
+    for i = 1:9
+        nexttile;
+        imagesc(trainImages(:, :, randInd(i)));
+        axis off;  % Removes axes to increase readability/cleanliness
+        exampleImgs{in} = trainImages(:, :, randInd(i));
+        in = in + 1;
+    end
+    title(graph, "Random MNIST Images for Digit " + d);
+    colormap("gray");
+    c = colorbar;
+    c.Layout.Tile = 'east';
+end
+% *******************************************************************
+
+% OBSERVATIONS: *****************************************************
+% In general, between all the digits/classes, the digits appear to be
+% centered in the middle of the 28x28 square, with the surrounding left and
+% right edges set to 0; the main "area of interest" appears to be the 
+% center rectangular section of the 28x28 square, as that is where the 
+% majority of the pixels are. Additionally, every digit has "soft" edges (lower
+% pixel intensity) that surround the main "form" of the digit (higher pixel
+% intensity), which could be useful for simplifying the digit data even
+% further for classification/training purposes, allowing the ability to 
+% only focus on the "hot" pixels in the digit image that make up the main
+% "body" of each digit. On a similar note, the thickness of the digits in
+% each class also vary significantly, with some samples being very thick
+% while others are very thin. This could influence the effectiveness of the
+% classification system, so it would be good to take note of this factor.
+% One other point of interest is that all the digits seem to share either
+% one of two main "features": straight lines and/or circles. This could be
+% a major point of interest in training the classification system to
+% distinguish between certain groups of classes/digits. 
+%
+% In terms of differences, certain classes, such as the digits 1, 6, and 9,
+% appear to have more consistent handwriting styles than others, which
+% could potentially make them more likely to be classified correctly than
+% other digits. 
+% *******************************************************************
+
+
+
+%% Step 2: Reshaping Images into Vector Form
+
+%%%
+% CODE: *************************************************************
+% Create new matrix for stacked image vectors; each column = an image
+trainImagesVector = zeros((28*28), size(trainImages, 3));
+for i = 1:length(trainImages)
+    trainImagesVector(:, i) = reshape(trainImages(:, :, i), [(28*28), 1]);
+end
+
+% Note: to convert back to matrix form, do reshape(..., [28, 28])
+% *******************************************************************
+
+
+
+%% Step 3: Solving the Least Squares Problem
+
+%%%
+% CODE: *************************************************************
+% Loops through various sample sizes
+Nall = [50, 100, 200, 500, 1000, 2000, 5000, 20000];
+
+for i = 1:length(Nall)
+    % Arbitrary initial sampling size: N = 500
+    N = Nall(i);
+
+    % Select N random flattened images + their corresponding labels
+    randInd = randperm(length(trainImagesVector));
+    randFlattened = trainImagesVector(:, randInd(1:N));
+    randLabels = trainLabels(randInd(1:N));
+    
+    % To properly perform multi-class classifications, the labels will be
+    % converted to one-hot encoding to allow for proper weight calculations
+    labelsCategorical = categorical(randLabels);
+    labelsOnehot = onehotencode(labelsCategorical, 2);
+    
+    % Solve for the pseudoinverse
+    Xp = pinv(randFlattened');
+    
+    % Solve for w 
+    w = Xp*labelsOnehot;
+    
+    % Use w to predict the labels for the entire dataset    
+    Yp = trainImagesVector'*w;
+    
+    % Apply argmax on the entire dataset to obtain the predicted labels
+    [~, labelsPredict] = max(Yp, [], 2);
+    labelsPredict = labelsPredict - 1;  % Subtracts 1 to get correct range 
+    
+    % Compare predicted labels to actual labels using a confusion chart
+    figure;
+    confusionchart(trainLabels, labelsPredict, "Title", "Confusion Matrix for " + ...
+    "N = " + N + " Sample Size");
+
+    % Compute accuracy rate 
+    disp("Accuracy (N = " + N + "): " + (sum(labelsPredict == trainLabels)/length(trainLabels))*100 + "%");
+end
+% *******************************************************************
+
+% OBSERVATIONS/ANALYSIS: ********************************************
+% In general, the accuracy of the predicted labels steadily increases as
+% the sample size N increases, which makes sense as the model would have
+% more data to work with and, thus, be able to find more patterns. However,
+% there does appear to be a limitation in terms of how far the accuracy can
+% grow to with size; as the sample size gets higher and higher, the
+% accuracy rate increases at a slower and slower rate. This could be
+% because the model has already extracted as many patterns and information
+% as it could given a smaller sample, so increasing the size further will
+% result in a lower and lower return. This is important as it could help me
+% balance accuracy with computational efficiency. Interestingly, when N =
+% 500, the model outputs a significantly lower accuracy rate than the other
+% sample sizes. Even after changing the rng seed multiple times, the
+% accuracy rate for when N = 500 still remains low, which hints at it being
+% an issue with the sample itself (or some other factor) rather than
+% randomness. Upon further analysis with the confusion matrix, it appears
+% that, when N = 500, the model consistently gets more wrong guesses for
+% the digits 1, 4, 5, and 9, suggesting that the model may be struggling to
+% differentiate between these digits; this makes sense, as 1 is rather
+% simple in nature and, thus, could be mixed up easily, same with 4, 5, and
+% 9, which could be mixed up with one another.  
+%
+% For future work, the process used to select random images could be made
+% better, such as isolating each class and selecting N random samples from
+% each class to ensure an equal distribution of the classes. This could
+% prevent biased weights stemming from an unequal random distribution. 
+% *******************************************************************

@@ -1,0 +1,68 @@
+%% Case Study 3: Classifying Handwritten Digits
+%% Part 2: Single Boolean Classifier
+% *ESE 105*
+% 
+% *Name: Minh Duc Nguyen, Hussain Albotabeekh, Shaaf Afzal, Fataiya Salifu*
+%
+
+clear;
+close all;
+load mnist-testing.mat;
+load mnist-training.mat;
+
+
+%% Step 1: Define K + Boundaries
+
+%%%
+% CODE: *************************************************************
+% Choose a random class (K) to establish boundaries
+K = 0; 
+
+% Set up flattened images again + isolate all images w/ K label
+trainImagesVector = zeros((28*28), size(trainImages, 3));
+for i = 1:length(trainImages)
+    trainImagesVector(:, i) = reshape(trainImages(:, :, i), [(28*28), 1]);
+end
+
+allK = trainImagesVector(:, trainLabels == K);
+
+% Take the sum of all pixel values across all K-label images
+allKSum = sum(allK, 2);
+
+% Select only pixel values above a certain value (to ignore outliers); set
+% respective pixels to either 1 or 0 to create a boolean matrix
+for i = 1:length(allKSum)
+    if(allKSum(i) < mean(allKSum)/0.7) % Value chosen through trial and error
+        allKSum(i) = 0;
+    else 
+        allKSum(i) = 1;
+    end
+end
+
+% Plot the boundaries matrix 
+figure;
+imagesc(reshape(allKSum, [28, 28]));
+
+% Create threshold + binary classifier
+Wk = allKSum;
+T = mean(Wk'*trainImagesVector(:, trainLabels == K));
+predictedLabels = zeros(length(trainImagesVector), 1);
+correctCount = 0;
+for i = 1:size(trainImagesVector, 2)
+    x = trainImagesVector(:, i);
+    FkX = Wk'*x;
+    % Test if label is K or not + if true label is K or not
+    predictedLabels(i) = FkX >= T;   % 1 if predicted to be K, else set as 0
+    trueLabel = trainLabels(i) == K;
+
+    if(predictedLabels(i) == trueLabel) 
+        correctCount = correctCount + 1;
+    end
+end
+
+% Display results
+disp("Acccuracy: " + (correctCount/size(trainImagesVector, 2))*100 + "%");
+
+trueLabels = double(trainLabels == 0);
+confusionchart(trueLabels, predictedLabels, "Title", "Confusion Matrix for K = " + K);
+% *******************************************************************

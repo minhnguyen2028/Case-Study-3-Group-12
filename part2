@@ -15,6 +15,9 @@ load mnist-training.mat;
 
 %%%
 % CODE: *************************************************************
+% Set up rng seed (for replicability)
+rng = 28;
+
 % Choose a random class (K) to establish boundaries
 K = 0; 
 
@@ -31,11 +34,12 @@ allKSum = sum(allK, 2);
 
 % Select only pixel values above a certain value (to ignore outliers); set
 % respective pixels to either 1 or 0 to create a boolean matrix
+val = mean(allKSum);   % Threshold set to the mean to account for outliers
 for i = 1:length(allKSum)
-    if(allKSum(i) < mean(allKSum)/0.7) % Value chosen through trial and error
-        allKSum(i) = 0;
+    if(allKSum(i) < val)
+        allKSum(i) = 0;   % Pixel NOT included in boundary 
     else 
-        allKSum(i) = 1;
+        allKSum(i) = 1;   % Pixel IS included in boundary 
     end
 end
 
@@ -45,6 +49,7 @@ imagesc(reshape(allKSum, [28, 28]));
 
 % Create threshold + binary classifier
 Wk = allKSum;
+% Threshold set to be the mean of the outputs 
 T = mean(Wk'*trainImagesVector(:, trainLabels == K));
 predictedLabels = zeros(length(trainImagesVector), 1);
 correctCount = 0;
@@ -54,15 +59,20 @@ for i = 1:size(trainImagesVector, 2)
     % Test if label is K or not + if true label is K or not
     predictedLabels(i) = FkX >= T;   % 1 if predicted to be K, else set as 0
     trueLabel = trainLabels(i) == K;
-
     if(predictedLabels(i) == trueLabel) 
         correctCount = correctCount + 1;
     end
 end
 
 % Display results
-disp("Acccuracy: " + (correctCount/size(trainImagesVector, 2))*100 + "%");
-
-trueLabels = double(trainLabels == 0);
+disp("Overall Acccuracy: " + (correctCount/size(trainImagesVector, 2))*100 + "%");
+trueLabels = double(trainLabels == K);
+figure;
 confusionchart(trueLabels, predictedLabels, "Title", "Confusion Matrix for K = " + K);
+confMat = confusionmat(trueLabels, predictedLabels);   % For rate purposes
+disp("Error Rate: " + (confMat(1, 2) + confMat(2, 1))*100/size(trainImagesVector, 2) + "%");
+disp("True Positive Rate: " + (confMat(2, 2)/sum(confMat(2, :)))*100 + "%");
+disp("True Negative Rate: " + (confMat(1, 1)/sum(confMat(1, :)))*100 + "%");
+disp("False Positive Rate: " + (confMat(1, 2)*100/sum(confMat(1, :))) + "%");
+disp("False Negative Rate: " + (confMat(2, 1)*100/sum(confMat(2, :))) + "%");
 % *******************************************************************

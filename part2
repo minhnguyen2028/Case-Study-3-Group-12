@@ -18,7 +18,7 @@ load mnist-training.mat;
 % Set up rng seed (for replicability)
 rng = 28;
 
-% Choose a random class (K) to establish boundaries
+% Choose a random class (K) to create + test boundaries
 K = 0; 
 
 % Set up flattened images again + isolate all images w/ K label
@@ -60,7 +60,7 @@ for i = 1:size(trainImagesVector, 2)
 end
 
 % Display results
-disp("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+disp("~~ BASE MODEL: ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
 disp("Overall Acccuracy: " + (correctCount/size(trainImagesVector, 2))*100 + "%");
 trueLabels = double(trainLabels == K);
 figure;
@@ -73,13 +73,85 @@ disp("False Positive Rate: " + (confMat(1, 2)*100/sum(confMat(1, :))) + "%");
 disp("False Negative Rate: " + (confMat(2, 1)*100/sum(confMat(2, :))) + "%");
 % *******************************************************************
 
-%% Step 2: Classifier Modifications (WORK IN PROGRESS)
+%% Step 2: Classifier Modifications 
 
 %%% 
 % CODE: *************************************************************
 % Note: class (K) is kept the same for now
 
-% Modification 1: edge detection
+% ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+% Modification 1: image centering (direct image modification)
+% Note: the centered images will be used instead of the original images for
+% all other modifications
+
+% Step 1: Calculate center of mass (x, y components)
+function [xCoM, yCoM] = CoM(img)
+    % Set up row and column grid
+    [r, c] = size(img);
+    [x, y] = meshgrid(1:c, 1:r);
+
+    % Calculate CoM for x and y (based on formula for CoM)
+    total = sum(img(:));
+    xCoM = sum(sum(x.*img))/total;
+    yCoM = sum(sum(y.*img))/total;
+end
+
+% Step 2: Calculate x, y shifts 
+function [xShift, yShift] = shift(img)
+    % Calculate center
+    [r, c] = size(img);
+    xCen = (c+1)/2;
+    yCen = (r+1)/2;
+
+    % Calculate shifts
+    [xCoM, yCoM] = CoM(img);
+    xShift = xCen - xCoM;
+    yShift = yCen - yCoM;
+end
+
+% Step 3: Shift image
+function centeredImage = imgCenter(img)
+    [xShift, yShift] = shift(img);
+
+    centeredImage = circshift(img, round([xShift, yShift]));  % Change this?
+end
+
+% Iteratively center all images
+centeredImages = zeros(28, 28, size(trainImages, 3));
+for i = 1:size(trainImages, 3)
+    centeredImages(:, :, i) = imgCenter(trainImages(:, :, i));
+end
+
+% Set up new flattened images + isolate all images w/ K label
+trainImagesVector = zeros((28*28), size(trainImages, 3));
+for i = 1:length(trainImages)
+    trainImagesVector(:, i) = reshape(centeredImages(:, :, i), [(28*28), 1]);
+end
+
+allK = trainImagesVector(:, trainLabels == K);
+
+% ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+% Modification 2: REDO pixel intensity w/ new centered images 
+allKSum = sum(allK, 2);
+
+% *Changed from binary values to continuous values for complexity
+val = mean(allKSum);   % Threshold set to the mean to account for outliers
+for i = 1:size(allKSum, 1)
+    if allKSum(i) < val
+        allKSum(i) = 0;
+    end
+end
+
+% Plot for reference
+figure;
+colormap("gray");
+imagesc(reshape(allKSum, [28, 28]));
+title("Intensity Modification");
+
+WkIntensity = allKSum;
+
+% ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+% Modification 3: edge detection
 % Get edges of each image and store in a matrix
 edgeAll = zeros(28, 28, size(allK, 2));
 for i = 1:size(allK, 2)
@@ -88,78 +160,88 @@ for i = 1:size(allK, 2)
 end
 
 % Get averaged edge matrix based on individual edge matrices
-sumEdges = zeros((28*28), 1);
+edgeAllVector = zeros(28*28, size(edgeAll, 3));
 for i = 1:size(edgeAll, 3)
-    curImg = reshape(edgeAll(:, :, i), [(28*28), 1]);
-    sumEdges = sumEdges + curImg;
+    edgeAllVector(:, i) = reshape(edgeAll(:, :, i), [28*28, 1]);
 end
-sumEdges = sumEdges/max(sumEdges);
+edgeAllVector = edgeAllVector > 0;
+aveEdges = sum(edgeAllVector, 2)/size(allK, 2);  % Create frequency matrix
 
-% Run threshold to get rid of noise
-threshold = 0.7; 
-sumEdges = sumEdges >= threshold;
+% Run threshold to get rid of noise (keeps pixels that appear 70% of the time)
+aveEdges = aveEdges / max(aveEdges);  % Normalize values
+threshold = 0.7;
+aveEdges = aveEdges >= threshold;
+
+% Plot for reference
 figure;
-imagesc(reshape(sumEdges, [28, 28]));
+colormap("gray");
+imagesc(reshape(aveEdges, [28, 28]));
+title("Edge Detection");
 
+WkEdge = aveEdges;
 
+% ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+% Modification 4: pixel frequency
+% Binarize K-label images + get frequency of nonzero pixels
+allK = allK > 0;
+freq = sum(allK, 2);
 
+% Normalize frequency matrix
+freq = freq/size(allK, 2);
 
+% Create boolean boundary matrix (same as previously); threshold set to
+% pixels appearing in at least 40% of images (set through trial and error)
+% *Changed from binary values to continuous values for complexity
+threshold = 0.4;
+for i = 1:size(freq, 1)
+    if freq(i, 1) < threshold
+        freq(i, 1) = 0;
+    end
+end
 
+% Plot for reference
+figure;  
+colormap("gray");
+imagesc(reshape(freq, [28, 28]));
+title("Frequency Detection");
 
+WkFrequency = freq;
 
-% % Display results
-% disp("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
-% disp("Overall Acccuracy: " + (correctCount/size(trainImagesVector, 2))*100 + "%");
-% trueLabels = double(trainLabels == K);
-% figure;
-% confusionchart(trueLabels, predictedLabels, "Title", "Confusion Matrix for K = " + K);
-% confMat = confusionmat(trueLabels, predictedLabels);   % For rate purposes
-% disp("Error Rate: " + (confMat(1, 2) + confMat(2, 1))*100/size(trainImagesVector, 2) + "%");
-% disp("True Positive Rate: " + (confMat(2, 2)/sum(confMat(2, :)))*100 + "%");
-% disp("True Negative Rate: " + (confMat(1, 1)/sum(confMat(1, :)))*100 + "%");
-% disp("False Positive Rate: " + (confMat(1, 2)*100/sum(confMat(1, :))) + "%");
-% disp("False Negative Rate: " + (confMat(2, 1)*100/sum(confMat(2, :))) + "%");
+% ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+% Set up augmented Wk vector 
+% Weights:
+a1 = 1;    % pixel intensity weight
+a2 = 1.3;  % pixel edges weight
+a3 = 1;  % pixel frequency weight
+WkAug = a1*WkIntensity + a2*WkEdge + a3*WkFrequency;
+
+% Run modified classifier with new parameters/boundaries (same process)
+Wk = WkAug;
+T = mean(Wk'*trainImagesVector(:, trainLabels == K));
+predictedLabels = zeros(length(trainImagesVector), 1);
+correctCount = 0;
+
+for i = 1:size(trainImagesVector, 2)
+    x = trainImagesVector(:, i);
+    FkX = Wk'*x;
+    % Test if label is K or not + if true label is K or not
+    predictedLabels(i) = FkX >= T;   % 1 if predicted to be K, else set as 0
+    trueLabel = trainLabels(i) == K;
+    if(predictedLabels(i) == trueLabel) 
+        correctCount = correctCount + 1;
+    end
+end
+
+% Display results
+disp("~~ MODIFIED MODEL: ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+disp("Overall Acccuracy: " + (correctCount/size(trainImagesVector, 2))*100 + "%");
+trueLabels = double(trainLabels == K);
+figure;
+confusionchart(trueLabels, predictedLabels, "Title", "Confusion Matrix for K = " + K);
+confMat = confusionmat(trueLabels, predictedLabels);   % For rate purposes
+disp("Error Rate: " + (confMat(1, 2) + confMat(2, 1))*100/size(trainImagesVector, 2) + "%");
+disp("True Positive Rate: " + (confMat(2, 2)/sum(confMat(2, :)))*100 + "%");
+disp("True Negative Rate: " + (confMat(1, 1)/sum(confMat(1, :)))*100 + "%");
+disp("False Positive Rate: " + (confMat(1, 2)*100/sum(confMat(1, :))) + "%");
+disp("False Negative Rate: " + (confMat(2, 1)*100/sum(confMat(2, :))) + "%");
 % *******************************************************************
-
-
-
-
-
-
-
-% FAILED MODIFICATIONS (less than/equal accuracy):
-
-% ~~~~~~~~~~~~~~~~ FREQUENCY ~~~~~~~~~~~~~~~~~~~~
-% % Note: class (K) is kept the same
-% % Modification: pixel frequency (rather than pixel intensity)
-% 
-% % Binarize K-label images + get frequency of nonzero pixels
-% allK = allK > 0;
-% freq = sum(allK, 2);
-% 
-% % Normalize frequency matrix
-% freq = freq/size(allK, 2);
-% 
-% % Create boolean boundary matrix (same as previously); threshold set to
-% % pixels appearing in at least 40% of images
-% threshold = 0.4;
-% freqBoundary = freq >= 0.3;
-% figure;    % Plotted for reference
-% imagesc(reshape(freqBoundary, [28, 28]));
-% 
-% % Run modified classifier with new parameters/boundaries (same process)
-% Wk = double(freqBoundary);
-% T = mean(Wk'*trainImagesVector(:, trainLabels == K));
-% predictedLabels = zeros(length(trainImagesVector), 1);
-% correctCount = 0;
-% 
-% for i = 1:size(trainImagesVector, 2)
-%     x = trainImagesVector(:, i);
-%     FkX = Wk'*x;
-%     % Test if label is K or not + if true label is K or not
-%     predictedLabels(i) = FkX >= T;   % 1 if predicted to be K, else set as 0
-%     trueLabel = trainLabels(i) == K;
-%     if(predictedLabels(i) == trueLabel) 
-%         correctCount = correctCount + 1;
-%     end
-% end

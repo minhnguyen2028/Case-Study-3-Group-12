@@ -19,7 +19,7 @@ load mnist-training.mat;
 rng = 28;
 
 % Choose a random class (K) to create + test boundaries
-K = 0; 
+K = 2; 
 
 % Set up flattened images again + isolate all images w/ K label
 trainImagesVector = zeros((28*28), size(trainImages, 3));
@@ -131,7 +131,7 @@ end
 allK = trainImagesVector(:, trainLabels == K);
 
 % ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-% Modification 2: REDO pixel intensity w/ new centered images 
+% Modification 2: redo pixel intensity w/ new centered images 
 allKSum = sum(allK, 2);
 
 % *Changed from binary values to continuous values for complexity
@@ -217,9 +217,15 @@ WkAug = a1*WkIntensity + a2*WkEdge + a3*WkFrequency;
 
 % Run modified classifier with new parameters/boundaries (same process)
 Wk = WkAug;
-T = mean(Wk'*trainImagesVector(:, trainLabels == K));
+% Threshold manually adjusted (trial and error) to decrease FN rate
+T = mean(Wk'*trainImagesVector(:, trainLabels == K))*0.85;
 predictedLabels = zeros(length(trainImagesVector), 1);
 correctCount = 0;
+
+
+% ** NOTE: WORK ON DEVELOPING A SYSTEMATIC WAY TO DETERMINE THE THRESHOLD T
+% (maybe using ROC --> perfcurve()?)
+
 
 for i = 1:size(trainImagesVector, 2)
     x = trainImagesVector(:, i);
@@ -245,3 +251,91 @@ disp("True Negative Rate: " + (confMat(1, 1)/sum(confMat(1, :)))*100 + "%");
 disp("False Positive Rate: " + (confMat(1, 2)*100/sum(confMat(1, :))) + "%");
 disp("False Negative Rate: " + (confMat(2, 1)*100/sum(confMat(2, :))) + "%");
 % *******************************************************************
+
+
+%% Step 3: Train With Testing Set (for analysis)
+
+%%%
+% *******************************************************************
+% Create flattened test images
+testImagesVector = zeros(28*28, size(testImages, 3));
+for i = 1:size(testImages, 3)
+    testImagesVector(:, i) = reshape(testImages(:, :, i), [28*28, 1]);
+end
+
+% Apply Wk vector on testing set to compare results
+T = mean(Wk'*testImagesVector(:, testLabels == K))*0.85;
+predictedLabels = zeros(length(testImagesVector), 1);
+correctCount = 0;
+
+for i = 1:size(testImagesVector, 2)
+    x = testImagesVector(:, i);
+    FkX = Wk'*x;
+    % Test if label is K or not + if true label is K or not
+    predictedLabels(i) = FkX >= T;   % 1 if predicted to be K, else set as 0
+    trueLabel = testLabels(i) == K;
+    if(predictedLabels(i) == trueLabel) 
+        correctCount = correctCount + 1;
+    end
+end
+
+% Display results
+disp("~~ MODIFIED MODEL (TEST SET): ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+disp("Overall Acccuracy: " + (correctCount/size(testImagesVector, 2))*100 + "%");
+trueLabels = double(testLabels == K);
+figure;
+confusionchart(trueLabels, predictedLabels, "Title", "Confusion Matrix for K = " + K);
+confMat = confusionmat(trueLabels, predictedLabels);   % For rate purposes
+disp("Error Rate: " + (confMat(1, 2) + confMat(2, 1))*100/size(testImagesVector, 2) + "%");
+disp("True Positive Rate: " + (confMat(2, 2)/sum(confMat(2, :)))*100 + "%");
+disp("True Negative Rate: " + (confMat(1, 1)/sum(confMat(1, :)))*100 + "%");
+disp("False Positive Rate: " + (confMat(1, 2)*100/sum(confMat(1, :))) + "%");
+disp("False Negative Rate: " + (confMat(2, 1)*100/sum(confMat(2, :))) + "%");
+% *******************************************************************
+
+% ANALYSIS/DISCUSSION ***********************************************
+% In the modified model set up, we wanted to get as much complimentary data
+% as possible, hence the use of multiple techniques and boundary matrices
+% in order to create a more complex and effective Wk vector. Upon initial
+% testing, this proved to be effective, as the augmented Wk vector yielded
+% a higher overall accuracy rate with slight respective improvements in the
+% other rates (i.e. higher True rates and lower error & False rates).
+% However, in the context of the MNIST dataset, we determined that the
+% unusually high FN rate (~50% in the base model) would result in many
+% missed true classifications that would significantly hinder the
+% practicality of the model, especially once this binary model is adapted
+% into a multi-class one. As such, we experimented with the threshold value
+% T in order to achieve a lower FN rate; the overall goal was ~70% or
+% higher for the True rates, and ~30% or less for the False rates. We
+% settled on multiplying the base threshold value (calculated using mean)
+% by 0.85 (or 85% of the original value) in order to lower the threshold
+% needed to classify a digit as positive (or equal to K). This helped us
+% reach our goal of ~70% or higher for the True rates and ~30% or lower for
+% the False rates for most of the classes. 
+% *******************************************************************
+
+
+
+
+
+% EXPERIMENTAL:
+% % ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+% % Modification: feature engineering (feature projection)
+% % *Note: this expanded matrix will be used instead of the original for all
+% % future modifications
+% 
+% % Original features
+% N = size(trainImagesVector, 1);
+% 
+% % Create n new features
+% n = 400;
+% R = sign(rand(n, N) - 0.5);
+% 
+% % Apply random projection
+% randNewFeatures = max(0, R*trainImagesVector);
+% 
+% % Concatenate original and new features
+% combinedTrainImagesVector = [trainImagesVector; randNewFeatures];
+% 
+% % Set this as the new flattened images vector
+% trainImagesVector = combinedTrainImagesVector;

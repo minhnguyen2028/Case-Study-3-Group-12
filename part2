@@ -48,9 +48,11 @@ Wk = allKSum;
 T = mean(Wk'*trainImagesVector(:, trainLabels == K));
 predictedLabels = zeros(length(trainImagesVector), 1);
 correctCount = 0;
+rawOutputs = zeros(size(trainImages, 3), 1);
 for i = 1:size(trainImagesVector, 2)
     x = trainImagesVector(:, i);
     FkX = Wk'*x;
+    rawOutputs(i) = FkX;
     % Test if label is K or not + if true label is K or not
     predictedLabels(i) = FkX >= T;   % 1 if predicted to be K, else set as 0
     trueLabel = trainLabels(i) == K;
@@ -58,6 +60,14 @@ for i = 1:size(trainImagesVector, 2)
         correctCount = correctCount + 1;
     end
 end
+
+% Performance metric: ROC curve
+[X, Y, Th1, A] = perfcurve((trainLabels == K), rawOutputs, 1);
+figure;
+plot(X, Y);
+xlabel("False Positive Rate");
+ylabel("True Positive Rate");
+title("ROC Curve for K = " + K + " (Base Model)");
 
 % Display results
 disp("~~ BASE MODEL: ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
@@ -71,6 +81,7 @@ disp("True Positive Rate: " + (confMat(2, 2)/sum(confMat(2, :)))*100 + "%");
 disp("True Negative Rate: " + (confMat(1, 1)/sum(confMat(1, :)))*100 + "%");
 disp("False Positive Rate: " + (confMat(1, 2)*100/sum(confMat(1, :))) + "%");
 disp("False Negative Rate: " + (confMat(2, 1)*100/sum(confMat(2, :))) + "%");
+disp("Area Under the Curve (ROC): " + A);   % Closer to 1 means better performance
 % *******************************************************************
 
 %% Step 2: Classifier Modifications 
@@ -217,16 +228,28 @@ WkAug = a1*WkIntensity + a2*WkEdge + a3*WkFrequency;
 
 % Run modified classifier with new parameters/boundaries (same process)
 Wk = WkAug;
-% Threshold manually adjusted (trial and error) to decrease FN rate
-T = mean(Wk'*trainImagesVector(:, trainLabels == K))*0.85;
 predictedLabels = zeros(length(trainImagesVector), 1);
 correctCount = 0;
 
+% Threshold systematically calculated (ROC Curve) to decrease FN rate
+rawOutputs = zeros(size(trainImages, 3), 1); 
+for i = 1:size(trainImagesVector, 2)
+    x = trainImagesVector(:, i);
+    FkX = Wk'*x;
+    rawOutputs(i) = FkX;
+end
+% Performance metric: ROC curve
+[X, Y, Th2, A] = perfcurve((trainLabels == K), rawOutputs, 1);
+figure;
+plot(X, Y);
+xlabel("False Positive Rate");
+ylabel("True Positive Rate");
+title("ROC Curve for K = " + K);
+[~, ind] = min(abs(X - (1-Y)));
+optimalThreshold = Th2(ind);    % Optimal threshold for K
+T = optimalThreshold;
 
-% ** NOTE: WORK ON DEVELOPING A SYSTEMATIC WAY TO DETERMINE THE THRESHOLD T
-% (maybe using ROC --> perfcurve()?)
-
-
+% Run classifier
 for i = 1:size(trainImagesVector, 2)
     x = trainImagesVector(:, i);
     FkX = Wk'*x;
@@ -250,6 +273,7 @@ disp("True Positive Rate: " + (confMat(2, 2)/sum(confMat(2, :)))*100 + "%");
 disp("True Negative Rate: " + (confMat(1, 1)/sum(confMat(1, :)))*100 + "%");
 disp("False Positive Rate: " + (confMat(1, 2)*100/sum(confMat(1, :))) + "%");
 disp("False Negative Rate: " + (confMat(2, 1)*100/sum(confMat(2, :))) + "%");
+disp("Area Under the Curve (ROC): " + A);   % Closer to 1 means better performance
 % *******************************************************************
 
 

@@ -1,0 +1,202 @@
+%% Case Study 3: Classifying Handwritten Digits
+%% Part 3: Multiclass Classifier and Competition
+% *ESE 105*
+% 
+% *Name: Minh Duc Nguyen, Hussain Albotabeekh, Shaaf Afzal, Fataiya Salifu*
+%
+
+clear;
+close all;
+load mnist-testing.mat;
+
+
+%% Main Code
+
+%%%
+% CODE: *************************************************************
+% Load test data
+load('mnist-testing.mat');
+rng = 28;
+% Train model and predict labels for test set
+num_test_images = size(testImages, 3);
+predicted_labels = zeros(num_test_images, 1);
+
+for i = 1:num_test_images
+    predicted_labels(i) = digitClassifier(testImages(:, :, i));
+end
+
+% Display confusion matrix
+confusionchart(testLabels, predicted_labels);
+confMat = confusionmat(testLabels, predicted_labels);
+
+% Calculate accuracy + useful metrics 
+TP = diag(confMat);
+FP = sum(confMat, 1)' - TP;
+FN = sum(confMat, 2) - TP;
+TN = sum(confMat(:)) - (TP + FP + FN);
+
+accuracy = mean(predicted_labels == testLabels) * 100;
+fprintf('Test Set Overall Accuracy: %.2f%%\n', accuracy);
+error = (sum(confMat(:)) - sum(diag(confMat)))/sum(confMat(:));
+fprintf('Test Set Overall Error Rate: %.2f%%\n', error*100);
+precision = TP./(TP + FP);  % How many pos. predictions are actual pos.
+disp('Test Set Precision (per class):');
+fprintf('K = %d: %.2f%%\n', [0:9; (precision.*100)']);
+recall = TP./(TP + FN);  % How many actual pos. are correctly identified
+disp('Test Set Recall (per class):');
+fprintf('K = %d: %.2f%%\n', [0:9; (recall.*100)']);
+% *******************************************************************
+
+
+%% Methods and Observations
+
+%%%
+% *******************************************************************
+% Methodology:
+% 1. Preprocessing:
+%    - Centered images based on their center of mass.
+%    - Normalized pixel values to [0, 1].
+% 2. Feature Extraction:
+%    - Extracted combined features: pixel intensity, edge detection, pixel frequency,
+%      and gradient magnitude.
+%    - Calculated gradient magnitude that captured structural details without requiring 
+%      additional toolboxes, eg. a Computer Vision Toolbox for HOG Feature Extraction.
+% 3. Composite Classifier:
+%    - Optimized weights for features through trial and error.
+%    - Applied thresholds derived from training data using ROC analysis.
+%
+% Observations:
+% - Test set accuracy improved from 20% in the begining to ~50%-60%.
+% - Challenges:
+%   * I think Similarities between digits like '1' and '7' still cause confusion.
+%   * Adding gradient features notably improved results for digits with 
+%     distinct loops, like '6' and '8'.
+%   * There are still lots of room for improvement
+% *******************************************************************
+
+
+%% Main Classifier Function
+
+%%%
+% CODE: *************************************************************
+% Set up digitClassifier function
+function label = digitClassifier(image)
+    % Input: 
+    %   image - a single p x p image matrix.
+    % Output:
+    %   label - predicted digit label (0-9)
+
+    % Persistent variables for weights and thresholds
+    persistent w_vectors thresholds p image_centering;
+
+    if isempty(w_vectors) || isempty(thresholds)
+        % Load training data
+        load('mnist-training.mat');
+
+        % Initialize variables
+        [p, ~, n] = size(trainImages);
+        num_classes = 10;
+        w_vectors = cell(num_classes, 1);
+        thresholds = zeros(num_classes, 1);
+        
+        % Centering function
+        image_centering = @(img) circshift(img, round(shift(img)));
+
+        % Normalize training images (from 0-1)
+        trainImages = trainImages / max(trainImages(:));
+
+        % Prepare training images
+        centered_images = arrayfun(@(i) image_centering(trainImages(:, :, i)), ...
+                                   1:n, 'UniformOutput', false);
+        centered_images = cat(3, centered_images{:});
+        flattened_images = reshape(centered_images, [p^2, n]);
+
+        % Train classifiers for each class
+        for k = 0:num_classes-1
+            % Extract samples of class k
+            class_samples = flattened_images(:, trainLabels == k);
+
+            % Feature extraction
+            intensity = sum(class_samples, 2) / size(class_samples, 2);
+            edges = mean(edge_detection(class_samples, p), 2);
+            frequency = (sum(class_samples > 0, 2) / size(class_samples, 2));  
+            gradient_features = mean(gradient_descriptor(class_samples, p), 2);
+
+            % Composite weight vector with optimized weights
+            a1 = 0.8; a2 = 1.3; a3 = 1.2; a4 = 1.9;
+            
+            w_k = a1 * intensity + a2 * edges + a3 * frequency + a4 * gradient_features;
+            w_vectors{k + 1} = w_k;
+            % Compute threshold using training samples
+            raw_outputs = w_k' * flattened_images;
+            true_labels = double(trainLabels == k);
+            [~, ~, T, ~] = perfcurve(true_labels, raw_outputs, 1);
+            thresholds(k + 1) = median(T); % Median threshold
+        end
+    end
+
+    % Center and flatten input image
+    centered_image = image_centering(image / max(image(:)));
+    x = centered_image(:);
+
+    % Calculate scores for all classes
+    scores = zeros(10, 1);
+    for k = 0:9
+        w_k = w_vectors{k + 1};
+        T_k = thresholds(k + 1);
+        scores(k + 1) = w_k' * x; % Raw score without thresholding
+    end
+
+    % Find the label with the highest score
+    [~, label] = max(scores);
+    label = label - 1; % Adjust for 0-based indexing
+end
+% *******************************************************************
+
+
+%% Helper Functions
+
+%%%
+% CODE: *************************************************************
+function [xShift, yShift] = shift(img)
+    % Compute x and y shifts for centering
+    [r, c] = size(img);
+    xCen = (c + 1) / 2;
+    yCen = (r + 1) / 2;
+    [xCoM, yCoM] = CoM(img);
+    xShift = xCen - xCoM;
+    yShift = yCen - yCoM;
+end
+
+function [xCoM, yCoM] = CoM(img)
+    % Compute center of mass for an image
+    [r, c] = size(img);
+    [x, y] = meshgrid(1:c, 1:r);
+    total = sum(img(:));
+    xCoM = sum(sum(x .* img)) / total;
+    yCoM = sum(sum(y .* img)) / total;
+end
+
+function edges = edge_detection(images, p)
+    % Compute edge detection for a set of images
+    num_images = size(images, 2);
+    edges = zeros(p^2, num_images);
+    for i = 1:num_images
+        edge_img = edge(reshape(images(:, i), [p, p]), 'canny');
+        edges(:, i) = edge_img(:);
+    end
+end
+
+function gradients = gradient_descriptor(images, p)
+    % Compute gradient features for a set of images
+    num_images = size(images, 2);
+    gradients = zeros(p^2, num_images);
+    for i = 1:num_images
+        img = reshape(images(:, i), [p, p]);
+        [Gx, Gy] = gradient(img); % Compute gradients
+        grad_magnitude = sqrt(Gx.^2 + Gy.^2); % Gradient magnitude
+        grad_orientation = atan2(Gy, Gx); % Gradient orientation
+        gradients(:, i) = grad_magnitude(:); % Flattened magnitude
+    end
+end
+% *******************************************************************

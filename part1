@@ -15,10 +15,6 @@ load mnist-training.mat;
 
 %%%
 % CODE: *************************************************************
-
-% • Take a few minutes to observe similarities and differences in shape, intensity, orientation, location, etc.
-% in the different samples—both within a single digit ‘class’ as well as across different classes.
-
 % For replicability:
 rng(28);
 
@@ -94,7 +90,6 @@ end
 Nall = [50, 100, 200, 500, 1000, 2000, 5000, 20000];
 
 for i = 1:length(Nall)
-    % Arbitrary initial sampling size: N = 500
     N = Nall(i);
 
     % Select N random flattened images + their corresponding labels

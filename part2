@@ -123,8 +123,7 @@ end
 % Step 3: Shift image
 function centeredImage = imgCenter(img)
     [xShift, yShift] = shift(img);
-
-    centeredImage = circshift(img, round([xShift, yShift]));  % Change this?
+    centeredImage = circshift(img, round([xShift, yShift]));  
 end
 
 % Iteratively center all images
@@ -175,7 +174,6 @@ edgeAllVector = zeros(28*28, size(edgeAll, 3));
 for i = 1:size(edgeAll, 3)
     edgeAllVector(:, i) = reshape(edgeAll(:, :, i), [28*28, 1]);
 end
-edgeAllVector = edgeAllVector > 0;
 aveEdges = sum(edgeAllVector, 2)/size(allK, 2);  % Create frequency matrix
 
 % Run threshold to get rid of noise (keeps pixels that appear 70% of the time)
@@ -201,9 +199,9 @@ freq = sum(allK, 2);
 freq = freq/size(allK, 2);
 
 % Create boolean boundary matrix (same as previously); threshold set to
-% pixels appearing in at least 40% of images (set through trial and error)
+% pixels appearing in at least 50% of images (set through trial and error)
 % *Changed from binary values to continuous values for complexity
-threshold = 0.4;
+threshold = 0.5;
 for i = 1:size(freq, 1)
     if freq(i, 1) < threshold
         freq(i, 1) = 0;

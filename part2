@@ -19,7 +19,7 @@ load mnist-training.mat;
 rng = 28;
 
 % Choose a random class (K) to create + test boundaries
-K = 2; 
+K = 0;
 
 % Set up flattened images again + isolate all images w/ K label
 trainImagesVector = zeros((28*28), size(trainImages, 3));
@@ -88,7 +88,7 @@ disp("Area Under the Curve (ROC): " + A);   % Closer to 1 means better performan
 
 %%% 
 % CODE: *************************************************************
-% Note: class (K) is kept the same for now
+% Note: iterates through all digits 
 
 % ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 % Modification 1: image centering (direct image modification)
@@ -126,152 +126,159 @@ function centeredImage = imgCenter(img)
     centeredImage = circshift(img, round([xShift, yShift]));  
 end
 
-% Iteratively center all images
-centeredImages = zeros(28, 28, size(trainImages, 3));
-for i = 1:size(trainImages, 3)
-    centeredImages(:, :, i) = imgCenter(trainImages(:, :, i));
-end
+for k = 0:9
+    K = k;
 
-% Set up new flattened images + isolate all images w/ K label
-trainImagesVector = zeros((28*28), size(trainImages, 3));
-for i = 1:length(trainImages)
-    trainImagesVector(:, i) = reshape(centeredImages(:, :, i), [(28*28), 1]);
-end
-
-allK = trainImagesVector(:, trainLabels == K);
+    % Iteratively center all images
+    centeredImages = zeros(28, 28, size(trainImages, 3));
+    for i = 1:size(trainImages, 3)
+        centeredImages(:, :, i) = imgCenter(trainImages(:, :, i));
+    end
+    
+    % Set up new flattened images + isolate all images w/ K label
+    trainImagesVector = zeros((28*28), size(trainImages, 3));
+    for i = 1:length(trainImages)
+        trainImagesVector(:, i) = reshape(centeredImages(:, :, i), [(28*28), 1]);
+    end
+    
+    allK = trainImagesVector(:, trainLabels == K);
 
 % ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 % Modification 2: redo pixel intensity w/ new centered images 
-allKSum = sum(allK, 2);
+    allKSum = sum(allK, 2);
 
 % *Changed from binary values to continuous values for complexity
-val = mean(allKSum);   % Threshold set to the mean to account for outliers
-for i = 1:size(allKSum, 1)
-    if allKSum(i) < val
-        allKSum(i) = 0;
+    val = mean(allKSum);   % Threshold set to the mean to account for outliers
+    for i = 1:size(allKSum, 1)
+        if allKSum(i) < val
+            allKSum(i) = 0;
+        end
     end
-end
 
 % Plot for reference
-figure;
-colormap("gray");
-imagesc(reshape(allKSum, [28, 28]));
-title("Intensity Modification");
-
-WkIntensity = allKSum;
+    figure;
+    tiledlayout(2, 2);
+    nexttile;
+    colormap("gray");
+    imagesc(reshape(allKSum, [28, 28]));
+    title("Intensity Modification");
+    
+    WkIntensity = allKSum;
 
 % ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 % Modification 3: edge detection
 % Get edges of each image and store in a matrix
-edgeAll = zeros(28, 28, size(allK, 2));
-for i = 1:size(allK, 2)
-    edgeMatrix = edge(reshape(allK(:, i), [28,28]), "canny");
-    edgeAll(:, :, i) = edgeMatrix;
-end
-
-% Get averaged edge matrix based on individual edge matrices
-edgeAllVector = zeros(28*28, size(edgeAll, 3));
-for i = 1:size(edgeAll, 3)
-    edgeAllVector(:, i) = reshape(edgeAll(:, :, i), [28*28, 1]);
-end
-aveEdges = sum(edgeAllVector, 2)/size(allK, 2);  % Create frequency matrix
-
-% Run threshold to get rid of noise (keeps pixels that appear 70% of the time)
-aveEdges = aveEdges / max(aveEdges);  % Normalize values
-threshold = 0.7;
-aveEdges = aveEdges >= threshold;
-
-% Plot for reference
-figure;
-colormap("gray");
-imagesc(reshape(aveEdges, [28, 28]));
-title("Edge Detection");
-
-WkEdge = aveEdges;
+    edgeAll = zeros(28, 28, size(allK, 2));
+    for i = 1:size(allK, 2)
+        edgeMatrix = edge(reshape(allK(:, i), [28,28]), "canny");
+        edgeAll(:, :, i) = edgeMatrix;
+    end
+    
+    % Get averaged edge matrix based on individual edge matrices
+    edgeAllVector = zeros(28*28, size(edgeAll, 3));
+    for i = 1:size(edgeAll, 3)
+        edgeAllVector(:, i) = reshape(edgeAll(:, :, i), [28*28, 1]);
+    end
+    aveEdges = sum(edgeAllVector, 2)/size(allK, 2);  % Create frequency matrix
+    
+    % Run threshold to get rid of noise (keeps pixels that appear 70% of the time)
+    aveEdges = aveEdges / max(aveEdges);  % Normalize values
+    threshold = 0.7;
+    aveEdges = aveEdges >= threshold;
+    
+    % Plot for reference
+    nexttile;
+    colormap("gray");
+    imagesc(reshape(aveEdges, [28, 28]));
+    title("Edge Detection");
+    
+    WkEdge = aveEdges;
 
 % ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 % Modification 4: pixel frequency
 % Binarize K-label images + get frequency of nonzero pixels
-allK = allK > 0;
-freq = sum(allK, 2);
+    allK = allK > 0;
+    freq = sum(allK, 2);
 
 % Normalize frequency matrix
-freq = freq/size(allK, 2);
+    freq = freq/size(allK, 2);
 
 % Create boolean boundary matrix (same as previously); threshold set to
 % pixels appearing in at least 50% of images (set through trial and error)
 % *Changed from binary values to continuous values for complexity
-threshold = 0.5;
-for i = 1:size(freq, 1)
-    if freq(i, 1) < threshold
-        freq(i, 1) = 0;
+    threshold = 0.5;
+    for i = 1:size(freq, 1)
+        if freq(i, 1) < threshold
+            freq(i, 1) = 0;
+        end
     end
-end
 
 % Plot for reference
-figure;  
-colormap("gray");
-imagesc(reshape(freq, [28, 28]));
-title("Frequency Detection");
-
-WkFrequency = freq;
+    nexttile;
+    colormap("gray");
+    imagesc(reshape(freq, [28, 28]));
+    title("Frequency Detection");
+    
+    WkFrequency = freq;
 
 % ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 % Set up augmented Wk vector 
 % Weights:
-a1 = 1;    % pixel intensity weight
-a2 = 1.3;  % pixel edges weight
-a3 = 1;  % pixel frequency weight
-WkAug = a1*WkIntensity + a2*WkEdge + a3*WkFrequency;
+    a1 = 1;    % pixel intensity weight
+    a2 = 1.3;  % pixel edges weight
+    a3 = 1;  % pixel frequency weight
+    WkAug = a1*WkIntensity + a2*WkEdge + a3*WkFrequency;
 
 % Run modified classifier with new parameters/boundaries (same process)
-Wk = WkAug;
-predictedLabels = zeros(length(trainImagesVector), 1);
-correctCount = 0;
+    Wk = WkAug;
+    predictedLabels = zeros(length(trainImagesVector), 1);
+    correctCount = 0;
 
 % Threshold systematically calculated (ROC Curve) to decrease FN rate
-rawOutputs = zeros(size(trainImages, 3), 1); 
-for i = 1:size(trainImagesVector, 2)
-    x = trainImagesVector(:, i);
-    FkX = Wk'*x;
-    rawOutputs(i) = FkX;
-end
+    rawOutputs = zeros(size(trainImages, 3), 1); 
+    for i = 1:size(trainImagesVector, 2)
+        x = trainImagesVector(:, i);
+        FkX = Wk'*x;
+        rawOutputs(i) = FkX;
+    end
 % Performance metric: ROC curve
-[X, Y, Th2, A] = perfcurve((trainLabels == K), rawOutputs, 1);
-figure;
-plot(X, Y);
-xlabel("False Positive Rate");
-ylabel("True Positive Rate");
-title("ROC Curve for K = " + K);
-[~, ind] = min(abs(X - (1-Y)));
-optimalThreshold = Th2(ind);    % Optimal threshold for K
-T = optimalThreshold;
+    [X, Y, Th2, A] = perfcurve((trainLabels == K), rawOutputs, 1);
+    [~, ind] = min(abs(X - (1-Y)));
+    optimalThreshold = Th2(ind);    % Optimal threshold for K
+    T = optimalThreshold;
 
 % Run classifier
-for i = 1:size(trainImagesVector, 2)
-    x = trainImagesVector(:, i);
-    FkX = Wk'*x;
-    % Test if label is K or not + if true label is K or not
-    predictedLabels(i) = FkX >= T;   % 1 if predicted to be K, else set as 0
-    trueLabel = trainLabels(i) == K;
-    if(predictedLabels(i) == trueLabel) 
-        correctCount = correctCount + 1;
+    for i = 1:size(trainImagesVector, 2)
+        x = trainImagesVector(:, i);
+        FkX = Wk'*x;
+        % Test if label is K or not + if true label is K or not
+        predictedLabels(i) = FkX >= T;   % 1 if predicted to be K, else set as 0
+        trueLabel = trainLabels(i) == K;
+        if(predictedLabels(i) == trueLabel) 
+            correctCount = correctCount + 1;
+        end
     end
-end
 
 % Display results
-disp("~~ MODIFIED MODEL: ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
-disp("Overall Acccuracy: " + (correctCount/size(trainImagesVector, 2))*100 + "%");
-trueLabels = double(trainLabels == K);
-figure;
-confusionchart(trueLabels, predictedLabels, "Title", "Confusion Matrix for K = " + K);
-confMat = confusionmat(trueLabels, predictedLabels);   % For rate purposes
-disp("Error Rate: " + (confMat(1, 2) + confMat(2, 1))*100/size(trainImagesVector, 2) + "%");
-disp("True Positive Rate: " + (confMat(2, 2)/sum(confMat(2, :)))*100 + "%");
-disp("True Negative Rate: " + (confMat(1, 1)/sum(confMat(1, :)))*100 + "%");
-disp("False Positive Rate: " + (confMat(1, 2)*100/sum(confMat(1, :))) + "%");
-disp("False Negative Rate: " + (confMat(2, 1)*100/sum(confMat(2, :))) + "%");
-disp("Area Under the Curve (ROC): " + A);   % Closer to 1 means better performance
+    disp("~~ MODIFIED MODEL (K = " + k + "): ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+    disp("Overall Acccuracy: " + (correctCount/size(trainImagesVector, 2))*100 + "%");
+    trueLabels = double(trainLabels == K);
+    nexttile;
+    confusionchart(trueLabels, predictedLabels, "Title", "Confusion Matrix for K = " + K);
+    confMat = confusionmat(trueLabels, predictedLabels);   % For rate purposes
+    disp("Error Rate: " + (confMat(1, 2) + confMat(2, 1))*100/size(trainImagesVector, 2) + "%");
+    disp("True Positive Rate: " + (confMat(2, 2)/sum(confMat(2, :)))*100 + "%");
+    disp("True Negative Rate: " + (confMat(1, 1)/sum(confMat(1, :)))*100 + "%");
+    disp("False Positive Rate: " + (confMat(1, 2)*100/sum(confMat(1, :))) + "%");
+    disp("False Negative Rate: " + (confMat(2, 1)*100/sum(confMat(2, :))) + "%");
+    disp("Area Under the Curve (ROC): " + A);   % Closer to 1 means better performance
+
+    figure;
+    plot(X, Y);
+    xlabel("False Positive Rate");
+    ylabel("True Positive Rate");
+    title("ROC Curve for K = " + K);
+end
 % *******************************************************************
 
 
@@ -279,6 +286,8 @@ disp("Area Under the Curve (ROC): " + A);   % Closer to 1 means better performan
 
 %%%
 % *******************************************************************
+K = 0;
+
 % Create flattened test images
 testImagesVector = zeros(28*28, size(testImages, 3));
 for i = 1:size(testImages, 3)
@@ -333,7 +342,11 @@ disp("False Negative Rate: " + (confMat(2, 1)*100/sum(confMat(2, :))) + "%");
 % by 0.85 (or 85% of the original value) in order to lower the threshold
 % needed to classify a digit as positive (or equal to K). This helped us
 % reach our goal of ~70% or higher for the True rates and ~30% or lower for
-% the False rates for most of the classes. 
+% the False rates for half of the classes, with 1, 4, 7, and 9 being just 
+% shy under/over the goal and 5 being significantly under the goal. This
+% may be due to the significant level of similarities between the shapes
+% and densities of the digits, especially with 4, 5, 7, and 9, causing the
+% model to misclassify them more often than the other digits. 
 % *******************************************************************
 
 
